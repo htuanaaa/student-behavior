@@ -1,0 +1,14 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 1
+names: ['student']
+kpt_shape: [17, 3]
+
+roboflow:
+  workspace: hoang-anh-tuan
+  project: classroom-behavior-thhds
+  version: dataset
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/hoang-anh-tuan/classroom-behavior-thhds/dataset/dataset
