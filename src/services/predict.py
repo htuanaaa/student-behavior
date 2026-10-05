@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 import logging
 from services.pose_predict import PoseEstimation
-from services.object_predict import ObjectDetection
+from services.cnn_predict import ObjectDetection
 
 logger = logging.getLogger("uvicorn.error")
 os.makedirs("debug_crops", exist_ok=True)
@@ -53,7 +53,7 @@ class Predict:
                     crop_filename = f"debug_crops/crop_{int(time.time() * 1000)}.jpg"
                     cv2.imwrite(crop_filename, crop_data)
 
-                if self.object_detection.check_class(crop_data, 2):
+                if self.object_detection.check_sleep(crop_data):
                     logger.warning("Model xác nhận: CÓ NGƯỜI NGỦ!")
                     cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 0, 255), 3)
                     cv2.putText(annotated_frame, f"CANH BAO ID {track_id}: CO NGUOI NGU!", (x1, y2 + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 3)

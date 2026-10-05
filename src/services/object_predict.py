@@ -10,7 +10,7 @@ from card_check import get_device, get_device_name
 logger = logging.getLogger("uvicorn.error")
 
 class ObjectDetection:
-    def __init__(self, model_path='../trainmodel/model_v1.pt'):
+    def __init__(self, model_path='../trainmodel/model_yolo.pt'):
         self.device = get_device()
         logger.info(f"Đang nạp mô hình object detection vào {get_device_name()}...")
         self.model = YOLO(model_path)

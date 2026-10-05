@@ -9,7 +9,6 @@ dataset/labels/
 yolomodel/yolov8x-pose.pt
 yolomodel/yolo26n.pt
 yolomodel/yolov8n.pt
-trainmodel/model_v2.pt
 *.pt.cache
 
 label.py

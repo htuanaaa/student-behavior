@@ -1,8 +1,8 @@
 
-Classroom Behavior - vdataset classroom-behavior-thhds
+Awake or Sleep - v1 2024-04-09 9:19am
 ==============================
 
-This dataset was exported via roboflow.com on July 27, 2026 at 11:21 AM GMT
+This dataset was exported via roboflow.com on April 27, 2025 at 7:31 AM GMT
 
 Roboflow is an end-to-end computer vision platform that helps you
 * collaborate with your team on computer vision projects
@@ -17,7 +17,13 @@ visit https://github.com/roboflow/notebooks
 
 To find over 100k other datasets and pre-trained models, visit https://universe.roboflow.com
 
-The dataset includes 4880 images.
-Behavior-of-student-in-classroom are annotated in YOLOv8 format.
+The dataset includes 1600 images.
+Awake-Sleep are annotated in folder format.
 
-No pre-processing or augmentation was applied.
+The following pre-processing was applied to each image:
+* Auto-orientation of pixel data (with EXIF-orientation stripping)
+* Resize to 640x640 (Stretch)
+
+No image augmentation techniques were applied.
+
+
