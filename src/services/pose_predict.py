@@ -1,4 +1,5 @@
 import cv2
+import numpy as np
 import logging
 import math
 import os
@@ -16,10 +17,16 @@ class PoseEstimation:
         logger.info(f"Đang nạp mô hình pose estimation vào {get_device_name()}...")
         self.model = YOLO(model_path)
         logger.info("Tải mô hình thành công...")
-        self.ALARM = 90    # 3 giây / 30 fps
+        self.ALARM = 50     # 1,7 giây ở 30 fps
         self.trackers = {}
 
-    def check_hand(self, person) -> bool:
+    def check_hand(self, person, min_conf=0.5) -> bool:
+        if len(person[0]) >= 3:
+            left_clear = min(person[7][2], person[9][2]) >= min_conf
+            right_clear = min(person[8][2], person[10][2]) >= min_conf
+            if not (left_clear or right_clear):
+                return False
+
         # left hand check
         dx_l = person[9][0] - person[7][0]
         dy_l = person[9][1] - person[7][1]
@@ -43,10 +50,14 @@ class PoseEstimation:
 
         l_eye = person_data[1]
         r_eye = person_data[2]
+        nose = person_data[0]
+        l_ear = person_data[3]
+        r_ear = person_data[4]
         eye_conf_threshold = 0.3
         tracker = self.trackers[track_id]
+        face_visible = (nose[2] >= 0.5) and (l_ear[2] >= 0.4 or r_ear[2] >= 0.4)
         
-        if l_eye[2] < eye_conf_threshold and r_eye[2] < eye_conf_threshold:
+        if l_eye[2] < eye_conf_threshold and r_eye[2] < eye_conf_threshold and face_visible:
             tracker['hid_frame'] += 1
             tracker['tilt_frame'] = 0
         elif l_eye[2] >= eye_conf_threshold and r_eye[2] >= eye_conf_threshold:
@@ -54,21 +65,59 @@ class PoseEstimation:
             dx = r_eye[0] - l_eye[0]
             dy = r_eye[1] - l_eye[1]
 
-            if dx != 0:
+            shoulder_w = math.hypot(person_data[6][0] - person_data[5][0],
+                                    person_data[6][1] - person_data[5][1])
+            turned_away = shoulder_w > 1e-3 and abs(dx) < 0.35 * shoulder_w
+            if turned_away:
+                tracker['tilt_frame'] = max(0, tracker['tilt_frame'] - 1)
+
+            elif dx != 0:
                 angle = math.degrees(math.atan(abs(dy) / abs(dx)))
-                if abs(angle) > 10:
+                if abs(angle) > 20:
                     tracker['tilt_frame'] += 1
                 else:
                     tracker['tilt_frame'] = 0
         else:
-            tracker['hid_frame'] = 0
-            tracker['tilt_frame'] = 0
+            tracker['hid_frame'] = max(0, tracker['hid_frame'] - 1)
+            tracker['tilt_frame'] = max(0,  tracker['tilt_frame'] - 1)
 
-        if tracker['hid_frame'] == self.ALARM or tracker['tilt_frame'] == self.ALARM:
+        if tracker['hid_frame'] >= self.ALARM or tracker['tilt_frame'] >= self.ALARM:
             tracker['hid_frame'] = 0
             tracker['tilt_frame'] = 0
             return True
         return False
+
+    def get_face_crop(self, frame, person_data, margin=1.8, min_conf=0.35, out_size=(128, 128)):
+        if frame is None or frame.size == 0:
+            return None, False
+
+        kp = np.asarray(person_data, dtype=np.float32)[0:5]
+        good = kp[:, 2] >= min_conf
+        if int(good.sum()) < 2:
+            return None, False
+
+        xs, ys = kp[good, 0], kp[good, 1]
+        cx = float((xs.min() + xs.max()) / 2.0)
+        cy = float((ys.min() + ys.max()) / 2.0)
+        span = float(max(xs.max() - xs.min(), ys.max() - ys.min()))
+
+        side = max(span * margin, 24.0)
+        h, w = frame.shape[:2]
+        x1 = int(round(cx - side / 2.0))
+        y1 = int(round(cy - side / 2.0))
+        x2 = int(round(cx + side / 2.0))
+        y2 = int(round(cy + side / 2.0))
+
+        x1 = max(0, min(x1, w - 2))
+        y1 = max(0, min(y1, h - 2))
+        x2 = max(x1 + 2, min(x2, w))
+        y2 = max(y1 + 2, min(y2, h))
+
+        crop = frame[y1:y2, x1:x2]
+        if crop.size == 0:
+            return None, False
+
+        return cv2.resize(crop, out_size, interpolation=cv2.INTER_AREA), True
 
     def detect(self, frame):
         results = self.model.track(
