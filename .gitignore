@@ -11,8 +11,6 @@ yolomodel/yolo26n.pt
 yolomodel/yolov8n.pt
 *.pt.cache
 
-label.py
-
 .venv/
 venv/
 env/

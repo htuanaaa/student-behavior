@@ -50,14 +50,10 @@ class PoseEstimation:
 
         l_eye = person_data[1]
         r_eye = person_data[2]
-        nose = person_data[0]
-        l_ear = person_data[3]
-        r_ear = person_data[4]
         eye_conf_threshold = 0.3
         tracker = self.trackers[track_id]
-        face_visible = (nose[2] >= 0.5) and (l_ear[2] >= 0.4 or r_ear[2] >= 0.4)
         
-        if l_eye[2] < eye_conf_threshold and r_eye[2] < eye_conf_threshold and face_visible:
+        if l_eye[2] < eye_conf_threshold and r_eye[2] < eye_conf_threshold:
             tracker['hid_frame'] += 1
             tracker['tilt_frame'] = 0
         elif l_eye[2] >= eye_conf_threshold and r_eye[2] >= eye_conf_threshold:
@@ -65,9 +61,8 @@ class PoseEstimation:
             dx = r_eye[0] - l_eye[0]
             dy = r_eye[1] - l_eye[1]
 
-            shoulder_w = math.hypot(person_data[6][0] - person_data[5][0],
-                                    person_data[6][1] - person_data[5][1])
-            turned_away = shoulder_w > 1e-3 and abs(dx) < 0.35 * shoulder_w
+            turned_away = abs(dy) < 0.35 * abs(dx)
+
             if turned_away:
                 tracker['tilt_frame'] = max(0, tracker['tilt_frame'] - 1)
 
@@ -87,21 +82,35 @@ class PoseEstimation:
             return True
         return False
 
-    def get_face_crop(self, frame, person_data, margin=1.8, min_conf=0.35, out_size=(128, 128)):
+    def get_face_crop(self, frame, person_data, margin=3.8, min_conf=0.35, out_size=(128, 128)):
         if frame is None or frame.size == 0:
             return None, False
 
         kp = np.asarray(person_data, dtype=np.float32)[0:5]
         good = kp[:, 2] >= min_conf
-        if int(good.sum()) < 2:
+
+        # Hai cách neo vùng đầu, chọn khung rộng hơn để không cắt mất vai.
+        # margin 3,8 đưa đầu về khoảng 30% bề ngang, cùng bố cục với ảnh huấn luyện.
+        candidates = []
+        if int(good.sum()) >= 2:
+            xs, ys = kp[good, 0], kp[good, 1]
+            candidates.append((max(float(max(xs.max() - xs.min(), ys.max() - ys.min())) * margin, 24.0),
+                               float((xs.min() + xs.max()) / 2.0),
+                               float((ys.min() + ys.max()) / 2.0)))
+
+        # Đầu gục xuống bàn làm mất toàn bộ điểm mặt, nên bám vào vai.
+        shoulder_w = math.hypot(person_data[6][0] - person_data[5][0],
+                                person_data[6][1] - person_data[5][1])
+        if shoulder_w >= 40 and min(person_data[5][2], person_data[6][2]) >= 0.3:
+            # 2,0 lần bề rộng vai, đo được đầu chiếm khoảng 14% bề ngang, gần mức 17% của ảnh huấn luyện.
+            candidates.append((shoulder_w * 2.0,
+                               float((person_data[5][0] + person_data[6][0]) / 2.0),
+                               float((person_data[5][1] + person_data[6][1]) / 2.0) - 0.55 * shoulder_w))
+
+        if not candidates:
             return None, False
+        side, cx, cy = max(candidates, key=lambda item: item[0])
 
-        xs, ys = kp[good, 0], kp[good, 1]
-        cx = float((xs.min() + xs.max()) / 2.0)
-        cy = float((ys.min() + ys.max()) / 2.0)
-        span = float(max(xs.max() - xs.min(), ys.max() - ys.min()))
-
-        side = max(span * margin, 24.0)
         h, w = frame.shape[:2]
         x1 = int(round(cx - side / 2.0))
         y1 = int(round(cy - side / 2.0))
@@ -123,7 +132,7 @@ class PoseEstimation:
         results = self.model.track(
             source=frame, 
             conf=0.5,
-            imgsz=416,
+            imgsz=1280,
             persist=True,
             device=self.device,
             verbose=False

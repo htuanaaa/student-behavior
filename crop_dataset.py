@@ -1,88 +1,159 @@
-import collections
 import os
 import sys
-import cv2
+import zlib
 
-PROJECT = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, PROJECT)
-sys.path.insert(0, os.path.join(PROJECT, "src"))
+import cv2
+import numpy as np
+
+P = os.environ.get("PROJECT_DIR", "/home/tuanexodus/codeaiss/project")
+sys.path.insert(0, os.path.join(P, "src"))
+os.chdir(P)
 
 from services.pose_predict import PoseEstimation
 
-OUT_DIR = "dataset_classroom"
-STEP = 15            # 0,5 giây (15 frame) / 30 fps lấy 1 ảnh
-MIN_TRACK = 15       # bỏ mặt xuất hiện dưới 15 frame
-MIN_FACE = 40        # bỏ kích thước mắt dưới 40 px
+OUT = os.path.join(P, "dataset_raw")
+DUP_HAMMING = 3
+DUP_WINDOW = 40
 
-def face_width(person_data):
-    points = person_data[:5]
-    points = points[points[:, 2] >= 0.35][:, :2]
-    if len(points) < 2:
-        return 0.0
-    xs, ys = points[:, 0], points[:, 1]
-    return max(xs.max() - xs.min(), ys.max() - ys.min())
+SOURCES = [
+    ("video1.mp4", "sleep", "sau_lung", 0, -1, 60, 0.10),
+    ("video2.mp4", "sleep", "ngang_hong", 0, -1, 60, 0.10),
+    ("video3.mp4", "sleep", "cao_truoc_trai", 0, -1, 60, 0.10),
+    ("video4.mp4", "sleep", "cao_truoc_rong", 0, -1, 60, 0.10),
+    ("IMG_1017.MOV", "sleep", "sau_lung_1080", 0, -1, 60, 0.10),
+    ("IMG_1016.MOV", "sleep", "truoc_cheo_xuong", 3840, 6150, 60, 0.10),
+    ("IMG_1016.MOV", "awake", "truoc_cheo_xuong", 0, 3600, 15, 0.10),
+    ("sample/classroom_cctv.mp4", "awake", "cao_dau_lop", 0, -1, 15, 0.25),
+]
 
 
-def crop_video(pose, path):
-    name = os.path.splitext(os.path.basename(path))[0]
-    cap = cv2.VideoCapture(path)
-    if not cap.isOpened():
-        print("video không mở được:", path)
-        return 0
+def dhash(img):
+    g = cv2.cvtColor(cv2.resize(img, (9, 8)), cv2.COLOR_BGR2GRAY)
+    bits = (g[:, 1:] > g[:, :-1]).flatten()
+    return int("".join("1" if b else "0" for b in bits), 2)
 
-    picked = []
-    frames_seen = collections.Counter()
 
-    frame_no = 0
-    while True:
-        ok, frame = cap.read()
-        if not ok:
-            break
-        _, persons = pose.detect(frame)
-        for p in persons:
-            frames_seen[p["id"]] += 1
-            if frame_no % STEP:
-                continue
-            if face_width(p["person_data"]) < MIN_FACE:
-                continue
-            crop, face_ok = pose.get_face_crop(
-                frame, p["person_data"],
-                margin=1.8, min_conf=0.35, out_size=(128, 128))
-            if face_ok and crop is not None:
-                picked.append((frame_no, p["id"], crop))
-        frame_no += 1
-    cap.release()
+def head_up(person_data, margin):
+    nose, ls, rs = person_data[0], person_data[5], person_data[6]
+    if ls[2] < 0.4 or rs[2] < 0.4 or nose[2] < 0.4:
+        return False
+    sw = np.hypot(rs[0] - ls[0], rs[1] - ls[1])
+    if sw <= 1e-3:
+        return False
+    return nose[1] < (ls[1] + rs[1]) / 2 - margin * sw
 
-    total_frames = frame_no
-    written = 0
-    for fno, track_id, crop in picked:
-        if frames_seen[track_id] < MIN_TRACK:
+
+def collect(pose):
+    rows = []
+    for name, label, angle, start, stop, step, margin in SOURCES:
+        cap = cv2.VideoCapture(os.path.join(P, name))
+        if not cap.isOpened():
+            print("không mở được:", name)
             continue
-        file_name = "%s_f%06d_id%02d.jpg" % (name, fno, track_id)
-        cv2.imwrite(os.path.join(OUT_DIR, file_name), crop)
-        written += 1
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        stop = total if stop < 0 else min(stop, total)
+        if start:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, start)
+        tag = os.path.splitext(os.path.basename(name))[0].replace(".", "")
+        recent, made = {}, 0
+        k = start
+        while k < stop:
+            ok, frame = cap.read()
+            if not ok:
+                break
+            if (k - start) % step == 0:
+                _, persons = pose.detect(frame)
+                for p in persons:
+                    data = p["person_data"]
+                    if label == "awake" and (min(data[1][2], data[2][2]) < 0.4 or not head_up(data, margin)):
+                        continue
+                    crop, ok_crop = pose.get_face_crop(frame, data)
+                    if not ok_crop:
+                        continue
+                    key = (tag, int(p["id"]), label)
+                    h = dhash(crop)
+                    if any(bin(h ^ old).count("1") <= DUP_HAMMING for old in recent.get(key, [])):
+                        continue
+                    recent.setdefault(key, []).append(h)
+                    recent[key] = recent[key][-DUP_WINDOW:]
+                    rows.append({"img": crop, "label": label, "angle": angle, "source": tag,
+                                 "track": int(p["id"]), "frame": k,
+                                 "group": "%s_%s" % (tag, int(p["id"]))})
+                    made += 1
+            k += 1
+        cap.release()
+        print("%-26s %-5s %-16s tao=%4d" % (name, label, angle, made))
+    return rows
 
-    print("%-22s %5d frame  %2d nguoi  ->  %4d anh"
-          % (name, total_frames, len(frames_seen), written))
-    return written
+
+def assign_splits(rows, ratios=(0.75, 0.10, 0.15)):
+    groups = {}
+    for r in rows:
+        groups.setdefault((r["label"], r["group"]), []).append(r)
+    for label in ("sleep", "awake"):
+        items = sorted(((k, v) for k, v in groups.items() if k[0] == label),
+                       key=lambda kv: len(kv[1]), reverse=True)
+        total = sum(len(v) for _, v in items)
+        target = [total * x for x in ratios]
+        got = [0, 0, 0]
+        for _, members in items:
+            s = max(range(3), key=lambda i: target[i] - got[i])
+            for r in members:
+                r["split"] = ("train", "valid", "test")[s]
+            got[s] += len(members)
+        print("%-5s chia tập: train=%d valid=%d test=%d" % (label, got[0], got[1], got[2]))
+    return rows
+
+
+def balance(rows, ratio=4.0):
+    dropped = 0
+    for split in ("train", "valid", "test"):
+        sl = [r for r in rows if r["split"] == split and r["label"] == "sleep"]
+        aw = sum(1 for r in rows if r["split"] == split and r["label"] == "awake") or 1
+        if len(sl) <= ratio * aw:
+            continue
+        keep = max(1, int(round(len(sl) / (ratio * aw))))
+        seen, out = {}, []
+        for r in rows:
+            if r["split"] == split and r["label"] == "sleep":
+                c = seen[r["group"]] = seen.get(r["group"], 0) + 1
+                if c % keep:
+                    dropped += 1
+                    continue
+            out.append(r)
+        rows = out
+    return rows, dropped
 
 
 def main():
-    videos = sys.argv[1:]
-    if not videos:
-        print("python crop_dataset.py video1.mp4 [video2.mp4 ...]")
-        return 1
-
-    os.makedirs(OUT_DIR, exist_ok=True)
-    pose = PoseEstimation(
-        model_path=os.path.join(PROJECT, "yolomodel", "yolov8n-pose.pt"))
-
-    total = 0
-    for path in videos:
-        total += crop_video(pose, path)
-    print("TONG:", total, "anh ->", OUT_DIR)
-    return 0
+    pose = PoseEstimation()
+    rows = assign_splits(collect(pose))
+    rows, dropped = balance(rows)
+    if os.path.isdir(OUT):
+        for root, _, files in os.walk(OUT, topdown=False):
+            for f in files:
+                os.remove(os.path.join(root, f))
+    for r in rows:
+        d = os.path.join(OUT, r["split"], r["label"])
+        os.makedirs(d, exist_ok=True)
+        fn = "%s_t%02d_%06d.jpg" % (r["source"], r["track"], r["frame"])
+        cv2.imwrite(os.path.join(d, fn), r["img"])
+        r["file"] = os.path.relpath(os.path.join(d, fn), OUT)
+    with open(os.path.join(OUT, "manifest.tsv"), "w") as f:
+        f.write("file\tsplit\tlabel\tangle\tsource\ttrack\tframe\n")
+        for r in rows:
+            f.write("%s\t%s\t%s\t%s\t%s\t%d\t%d\n" % (r["file"], r["split"], r["label"],
+                                                      r["angle"], r["source"], r["track"], r["frame"]))
+    print("tổng= %d | bỏ bớt khi cân bằng= %d" % (len(rows), dropped))
+    for split in ("train", "valid", "test"):
+        s = sum(1 for r in rows if r["split"] == split and r["label"] == "sleep")
+        a = sum(1 for r in rows if r["split"] == split and r["label"] == "awake")
+        print("%-6s sleep=%4d awake=%4d" % (split, s, a))
+    counts = {}
+    for r in rows:
+        counts[(r["angle"], r["label"])] = counts.get((r["angle"], r["label"]), 0) + 1
+    print("theo góc:", sorted("%s/%s=%d" % (k[0], k[1], v) for k, v in counts.items()))
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
