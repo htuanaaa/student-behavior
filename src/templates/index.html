@@ -10,6 +10,9 @@
         .container { display: flex; justify-content: center; gap: 20px; margin-top: 20px; flex-wrap: wrap; }
         .box { width: 45%; min-width: 320px; background: #313244; padding: 20px; border-radius: 12px; box-sizing: border-box; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         img { width: 100%; border-radius: 8px; background-color: #11111b; min-height: 250px; object-fit: cover; }
+
+        /* Hai khung xem truoc giu dung ty le 16:9 cua video */
+        #live-camera-img, #video-img { aspect-ratio: 16 / 9; height: auto; min-height: 0; }
         
         button, input { margin-top: 15px; padding: 12px 15px; font-size: 16px; border-radius: 8px; border: none; width: 100%; box-sizing: border-box; }
         input[type="text"] { background-color: #181825; color: #cdd6f4; border: 1px solid #45475a; }
@@ -91,6 +94,12 @@
         videoElement.setAttribute('playsinline', ''); 
         const canvasElement = document.createElement("canvas");
         const ctx = canvasElement.getContext("2d");
+
+        // Anh giu cho cho hai khung xem truoc, tranh hien icon anh loi
+        const PLACEHOLDER_CAM = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjgwIiBoZWlnaHQ9IjcyMCIgdmlld0JveD0iMCAwIDEyODAgNzIwIj4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iZyIgeDE9IjAiIHkxPSIwIiB4Mj0iMCIgeTI9IjEiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiMxODE4MjUiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMTExMTFiIi8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogIDwvZGVmcz4KICA8cmVjdCB3aWR0aD0iMTI4MCIgaGVpZ2h0PSI3MjAiIGZpbGw9InVybCgjZykiLz4KICA8cmVjdCB4PSIyNCIgeT0iMjQiIHdpZHRoPSIxMjMyIiBoZWlnaHQ9IjY3MiIgcng9IjE4IiBmaWxsPSJub25lIgogICAgICAgIHN0cm9rZT0iIzMxMzI0NCIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtZGFzaGFycmF5PSIxMiA5Ii8+CiAgPHJlY3QgeD0iNTIwIiB5PSIyMzAiIHdpZHRoPSIyNDAiIGhlaWdodD0iMTUwIiByeD0iMjYiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzU4NWI3MCIgc3Ryb2tlLXdpZHRoPSI3Ii8+CiAgPGNpcmNsZSBjeD0iNjQwIiBjeT0iMzA1IiByPSI0NCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNTg1YjcwIiBzdHJva2Utd2lkdGg9IjciLz4KICA8cmVjdCB4PSI3MDAiIHk9IjIwMyIgd2lkdGg9IjQ2IiBoZWlnaHQ9IjI2IiByeD0iOCIgZmlsbD0iIzU4NWI3MCIvPgogIDxjaXJjbGUgY3g9Ijc3MCIgY3k9IjI1MiIgcj0iMTEiIGZpbGw9IiNmMzhiYTgiLz4KCiAgPHRleHQgeD0iNjQwIiB5PSI0NzAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJzeXN0ZW0tdWksIHNhbnMtc2VyaWYiCiAgICAgICAgZm9udC1zaXplPSI0MiIgZmlsbD0iIzdmODQ5YyI+QuG6pW0gQuG6rXQgQ2FtZXJhIMSR4buDIHhlbTwvdGV4dD4KICA8dGV4dCB4PSI2NDAiIHk9IjUyMiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9InN5c3RlbS11aSwgc2Fucy1zZXJpZiIKICAgICAgICBmb250LXNpemU9IjI2IiBmaWxsPSIjNTg1YjcwIj5DaMawYSBjw7Mgbmd14buTbiBow6xuaDwvdGV4dD4KPC9zdmc+Cg==";
+        const PLACEHOLDER_VID = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjgwIiBoZWlnaHQ9IjcyMCIgdmlld0JveD0iMCAwIDEyODAgNzIwIj4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iZyIgeDE9IjAiIHkxPSIwIiB4Mj0iMCIgeTI9IjEiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiMxODE4MjUiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMTExMTFiIi8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogIDwvZGVmcz4KICA8cmVjdCB3aWR0aD0iMTI4MCIgaGVpZ2h0PSI3MjAiIGZpbGw9InVybCgjZykiLz4KICA8cmVjdCB4PSIyNCIgeT0iMjQiIHdpZHRoPSIxMjMyIiBoZWlnaHQ9IjY3MiIgcng9IjE4IiBmaWxsPSJub25lIgogICAgICAgIHN0cm9rZT0iIzMxMzI0NCIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtZGFzaGFycmF5PSIxMiA5Ii8+CiAgPGNpcmNsZSBjeD0iNjQwIiBjeT0iMzA1IiByPSI3OCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNTg1YjcwIiBzdHJva2Utd2lkdGg9IjciLz4KICA8cG9seWdvbiBwb2ludHM9IjYxOCwyNjggNjE4LDM0MiA2ODIsMzA1IiBmaWxsPSIjNTg1YjcwIi8+CgogIDx0ZXh0IHg9IjY0MCIgeT0iNDcwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LWZhbWlseT0ic3lzdGVtLXVpLCBzYW5zLXNlcmlmIgogICAgICAgIGZvbnQtc2l6ZT0iNDIiIGZpbGw9IiM3Zjg0OWMiPlThuqNpIHZpZGVvIGzDqm4gxJHhu4Mgbmjhuq1uIGRp4buHbjwvdGV4dD4KICA8dGV4dCB4PSI2NDAiIHk9IjUyMiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9InN5c3RlbS11aSwgc2Fucy1zZXJpZiIKICAgICAgICBmb250LXNpemU9IjI2IiBmaWxsPSIjNTg1YjcwIj5DaMawYSBjaOG7jW4gdOG7h3AgdmlkZW88L3RleHQ+Cjwvc3ZnPgo=";
+        document.getElementById('live-camera-img').src = PLACEHOLDER_CAM;
+        document.getElementById('video-img').src = PLACEHOLDER_VID;
 
         // ==========================================
         // BỘ ĐIỀU PHỐI (ROUTER) KHI BẤM NÚT BẬT
@@ -176,8 +185,8 @@
                 }
             } 
             
-            // Xóa ảnh trên màn hình và ngắt kết nối MJPEG/WebSocket
-            document.getElementById('live-camera-img').src = "";
+            // Tra khung ve anh giu cho va ngat ket noi MJPEG/WebSocket
+            document.getElementById('live-camera-img').src = PLACEHOLDER_CAM;
             currentMode = null;
         }
 
@@ -208,7 +217,7 @@
         }
 
         setInterval(async () => {
-            if (isStreaming || currentMode === 'ip' || document.getElementById('video-img').src !== "") {
+            if (isStreaming || currentMode === 'ip' || document.getElementById('video-img').src !== PLACEHOLDER_VID) {
                 try {
                     const response = await fetch('/api/stats');
                     const data = await response.json();

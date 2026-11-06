@@ -137,7 +137,7 @@ class PoseEstimation:
             device=self.device,
             verbose=False
         )
-        annotated_frame = results[0].plot(boxes=False)
+        annotated_frame = frame.copy()
         detected_persons = []
 
         if len(results[0].boxes) > 0 and results[0].keypoints is not None and results[0].boxes.id is not None:
